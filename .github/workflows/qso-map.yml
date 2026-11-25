@@ -3,35 +3,48 @@ name: KQ4SBZ Live QSO Map
 on:
   workflow_dispatch:
 
-
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
-  deploy:
+  test-qrz:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Test QRZ Logbook connection
+        env:
+          QRZ_API_KEY: ${{ secrets.QRZ_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import urllib.request
+          import urllib.parse
 
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
+          data = urllib.parse.urlencode({
+              "KEY": os.environ["QRZ_API_KEY"],
+              "ACTION": "FETCH",
+              "OPTION": "MAX:0"
+          }).encode()
 
-      - name: Upload website
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./public
+          request = urllib.request.Request(
+              "https://logbook.qrz.com/api",
+              data=data,
+              headers={
+                  "User-Agent": "KQ4SBZ-LiveQSOMap/1.0 (KQ4SBZ)"
+              }
+          )
 
-      - name: Publish website
-        id: deployment
-        uses: actions/deploy-pages@v4
+          with urllib.request.urlopen(request, timeout=60) as response:
+              result = urllib.parse.parse_qs(response.read().decode())
+
+          status = result.get("RESULT", ["UNKNOWN"])[0]
+          count = result.get("COUNT", ["0"])[0]
+
+          print("QRZ API status:", status)
+          print("Total QSOs:", count)
+
+          if status != "OK":
+              raise SystemExit("QRZ connection test failed")
+
+          print("QRZ connection successful!")
+          PY
