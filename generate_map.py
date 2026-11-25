@@ -22,7 +22,7 @@ with urllib.request.urlopen(request, timeout=60) as response:
 
 if result.get("RESULT", [""])[0] != "OK":
     raise SystemExit("QRZ retrieval failed")
-
+print("QRZ response fields:", list(result.keys()))
 adif = result.get("ADIF", [""])[0]
 
 if not adif:
