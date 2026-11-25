@@ -41,6 +41,7 @@ jobs:
       - name: Retrieve QRZ contacts and generate map
         env:
           QRZ_API_KEY: ${{ secrets.QRZ_API_KEY }}
+          CARTO_TILE_URL: ${{ secrets.CARTO_TILE_URL }}
         run: python3 generate_map.py
 
       - name: Generate map preview image
