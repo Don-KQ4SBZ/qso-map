@@ -30,11 +30,12 @@ with urllib.request.urlopen(request, timeout=60) as response:
 
 decoded = html.unescape(urllib.parse.unquote(raw))
 
-records = re.findall(
-    r"<CALL:\d+[^>]*>.*?<EOR>",
-    decoded,
-    re.I | re.S
-)
+records = [
+    record
+    for record in re.split(r"<EOR>", decoded, flags=re.I)
+    if re.search(r"<CALL:\d+", record, re.I)
+]
+
 
 if not records:
     raise SystemExit("No QSO records extracted")
