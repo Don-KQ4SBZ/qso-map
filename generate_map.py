@@ -6,7 +6,7 @@ import urllib.parse
 data = urllib.parse.urlencode({
     "KEY": os.environ["QRZ_API_KEY"],
     "ACTION": "FETCH",
-    "OPTION": "ALL"
+    "OPTION": "ALL,TYPE:ADIF"
 }).encode()
 
 request = urllib.request.Request(
