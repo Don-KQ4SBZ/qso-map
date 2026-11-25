@@ -2,33 +2,32 @@ import os
 import re
 import urllib.request
 import urllib.parse
+import html
 
 data = urllib.parse.urlencode({
     "KEY": os.environ["QRZ_API_KEY"],
-    "ACTION": "FETCH"
+    "ACTION": "FETCH",
+    "OPTION": "MAX:1"
 }).encode()
 
 request = urllib.request.Request(
     "https://logbook.qrz.com/api",
-    data=data
+    data=data,
+    headers={
+        "User-Agent": "KQ4SBZ-LiveQSOMap/1.0"
+    }
 )
 
 with urllib.request.urlopen(request, timeout=60) as response:
-    result = urllib.parse.parse_qs(
-        response.read().decode(),
-        keep_blank_values=True
-    )
+    raw = response.read().decode()
+
+result = urllib.parse.parse_qs(raw, keep_blank_values=True)
+decoded = html.unescape(urllib.parse.unquote(raw))
 
 print("API status:", result.get("RESULT"))
 print("Record count:", result.get("COUNT"))
+print("Response length:", len(raw))
+print("ADIF field present:", "ADIF" in result)
 print("ADIF length:", len(result.get("ADIF", [""])[0]))
-
-adif = result.get("ADIF", [""])[0]
-
-if not adif:
-    raise SystemExit("No ADIF data received")
-
-print("QSOs retrieved:", len(re.findall(r"<EOR>", adif, re.I)))
-print("Latitude fields:", len(re.findall(r"<LAT:", adif, re.I)))
-print("Longitude fields:", len(re.findall(r"<LON:", adif, re.I)))
-print("Grid squares:", len(re.findall(r"<GRIDSQUARE:", adif, re.I)))
+print("QSO records detected:", len(re.findall(r"<EOR>", decoded, re.I)))
+print("Reason field present:", "REASON" in result)
