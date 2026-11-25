@@ -7,7 +7,7 @@ import html
 data = urllib.parse.urlencode({
     "KEY": os.environ["QRZ_API_KEY"],
     "ACTION": "FETCH",
-    "OPTION": "MAX:1"
+    "OPTION": "ALL"
 }).encode()
 
 request = urllib.request.Request(
@@ -21,13 +21,21 @@ request = urllib.request.Request(
 with urllib.request.urlopen(request, timeout=60) as response:
     raw = response.read().decode()
 
-result = urllib.parse.parse_qs(raw, keep_blank_values=True)
 decoded = html.unescape(urllib.parse.unquote(raw))
 
-print("API status:", result.get("RESULT"))
-print("Record count:", result.get("COUNT"))
-print("Response length:", len(raw))
-print("ADIF field present:", "ADIF" in result)
-print("ADIF length:", len(result.get("ADIF", [""])[0]))
-print("QSO records detected:", len(re.findall(r"<EOR>", decoded, re.I)))
-print("Reason field present:", "REASON" in result)
+records = re.findall(
+    r"<CALL:\d+[^>]*>.*?<EOR>",
+    decoded,
+    re.I | re.S
+)
+
+print("Response size:", len(raw))
+print("Total QSOs retrieved:", len(records))
+print("Latitude fields:", len(re.findall(r"<LAT:", decoded, re.I)))
+print("Longitude fields:", len(re.findall(r"<LON:", decoded, re.I)))
+print("Grid squares:", len(re.findall(r"<GRIDSQUARE:", decoded, re.I)))
+
+if not records:
+    raise SystemExit("No QSO records extracted")
+
+print("QRZ contact retrieval successful!")
