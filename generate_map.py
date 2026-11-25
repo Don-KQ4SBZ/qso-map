@@ -129,7 +129,7 @@ def distance(a, b):
         math.sqrt(min(1, h))
     )
 
-# Verified transmitting locations
+# Transmitting locations
 CAMDEN = (36.3463161687504, -76.16453613386902)
 HERTFORD = (36.172102, -76.281502)
 MOVE_DATE = "20251219"
@@ -138,19 +138,18 @@ colors = {
     "160M": "#795548",
     "80M": "#9c27b0",
     "60M": "#607d8b",
-    "40M": "#2196f3",
+    "40M": "#0066ff",
     "30M": "#00bcd4",
-    "20M": "#2e7d32",
-    "17M": "#8bc34a",
-    "15M": "#ff9800",
+    "20M": "#008000",
+    "17M": "#76b900",
+    "15M": "#ff8800",
     "12M": "#e91e63",
-    "10M": "#f44336",
+    "10M": "#e60000",
     "6M": "#673ab7",
-    "2M": "#009688",
-    "70CM": "#455a64"
+    "2M": "#008b8b",
+    "70CM": "#34495e"
 }
 
-# Authorized CARTO map background
 carto_url = os.environ["CARTO_TILE_URL"].strip()
 
 m = folium.Map(
@@ -158,7 +157,9 @@ m = folium.Map(
     zoom_start=3,
     tiles=None,
     control_scale=True,
-    world_copy_jump=True
+    world_copy_jump=True,
+    zoom_snap=0.25,
+    zoom_delta=0.5
 )
 
 folium.TileLayer(
@@ -177,6 +178,15 @@ folium.TileLayer(
     show=False
 ).add_to(m)
 
+# Increase basemap contrast and color saturation
+m.get_root().header.add_child(folium.Element("""
+<style>
+.leaflet-tile-pane {
+    filter: saturate(1.65) contrast(1.15) brightness(0.98);
+}
+</style>
+"""))
+
 Fullscreen().add_to(m)
 
 MeasureControl(
@@ -187,6 +197,7 @@ MeasureControl(
 layers = {}
 callsigns = set()
 countries = set()
+bounds = [CAMDEN, HERTFORD]
 
 mapped = 0
 camden_count = 0
@@ -222,6 +233,7 @@ for record in records:
         station = "Hertford, NC"
         hertford_count += 1
 
+    bounds.append(destination)
     callsigns.add(call)
 
     if country:
@@ -268,16 +280,18 @@ for record in records:
     folium.PolyLine(
         [origin, destination],
         color=color,
-        weight=1.5,
-        opacity=0.45
+        weight=2,
+        opacity=0.75
     ).add_to(layers[band])
 
     folium.CircleMarker(
         destination,
-        radius=4,
+        radius=5,
         color=color,
+        weight=1.5,
         fill=True,
-        fill_opacity=0.85,
+        fill_color=color,
+        fill_opacity=0.95,
         tooltip=html.escape(call),
         popup=folium.Popup(popup, max_width=300)
     ).add_to(layers[band])
@@ -313,6 +327,22 @@ folium.Marker(
     icon=folium.Icon(color="red", icon="home")
 ).add_to(m)
 
+# Automatically frame all contacts
+m.fit_bounds(
+    [
+        [
+            min(point[0] for point in bounds),
+            min(point[1] for point in bounds)
+        ],
+        [
+            max(point[0] for point in bounds),
+            max(point[1] for point in bounds)
+        ]
+    ],
+    padding=(60, 60),
+    max_zoom=4
+)
+
 folium.LayerControl(collapsed=False).add_to(m)
 
 updated = datetime.now(timezone.utc).strftime(
@@ -326,15 +356,15 @@ stats = f"""
     left: 15px;
     z-index: 9999;
     background: white;
-    color: #222;
+    color: #172334;
     padding: 15px;
-    border: 1px solid #aaa;
+    border: 2px solid #164b75;
     border-radius: 8px;
     font-family: Arial, sans-serif;
     font-size: 13px;
-    box-shadow: 0 2px 8px #0003;
+    box-shadow: 0 2px 8px #0004;
 ">
-    <strong style="font-size: 18px;">
+    <strong style="font-size: 18px; color:#164b75;">
         KQ4SBZ Live QSO Map
     </strong>
     <hr>
