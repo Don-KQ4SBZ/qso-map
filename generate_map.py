@@ -36,7 +36,6 @@ records = [
     if re.search(r"<CALL:\d+", record, re.I)
 ]
 
-
 if not records:
     raise SystemExit("No QSO records extracted")
 
@@ -78,7 +77,7 @@ def grid_center(grid):
     grid = grid.strip().upper()
 
     if not re.fullmatch(
-        r"[A-R]{2}[0-9]{2}([A-X]{2})?([0-9]{2})?",
+        r"[A-R]{2}[0-9]{2}([A-X]{2}([0-9]{2})?)?",
         grid
     ):
         return None
@@ -151,17 +150,31 @@ colors = {
     "70CM": "#455a64"
 }
 
+# Authorized CARTO map background
+carto_url = os.environ["CARTO_TILE_URL"].strip()
+
 m = folium.Map(
     location=HERTFORD,
     zoom_start=3,
-    tiles="CartoDB positron",
+    tiles=None,
     control_scale=True,
     world_copy_jump=True
 )
 
 folium.TileLayer(
+    tiles=carto_url,
+    attr='&copy; OpenStreetMap contributors &copy; CARTO',
+    name="CARTO Voyager",
+    overlay=False,
+    control=True,
+    show=True,
+    max_zoom=19
+).add_to(m)
+
+folium.TileLayer(
     "OpenStreetMap",
-    name="Street Map"
+    name="Street Map",
+    show=False
 ).add_to(m)
 
 Fullscreen().add_to(m)
@@ -200,7 +213,6 @@ for record in records:
         missing_dates += 1
         continue
 
-    # Select transmitting station by QSO date
     if qso_date < MOVE_DATE:
         origin = CAMDEN
         station = "Camden, NC"
@@ -275,7 +287,6 @@ for record in records:
 if mapped == 0:
     raise SystemExit("No mappable contacts found")
 
-# Exactly two transmitting station markers
 folium.Marker(
     CAMDEN,
     tooltip="KQ4SBZ - Former Station, Camden, NC",
