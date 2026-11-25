@@ -5,34 +5,30 @@ import urllib.parse
 
 data = urllib.parse.urlencode({
     "KEY": os.environ["QRZ_API_KEY"],
-    "ACTION": "FETCH",
-    "OPTION": "ALL;TYPE:ADIF"
+    "ACTION": "FETCH"
 }).encode()
 
 request = urllib.request.Request(
     "https://logbook.qrz.com/api",
-    data=data,
-    headers={
-        "User-Agent": "KQ4SBZ-LiveQSOMap/1.0 (KQ4SBZ)"
-    }
+    data=data
 )
 
 with urllib.request.urlopen(request, timeout=60) as response:
-    result = urllib.parse.parse_qs(response.read().decode())
+    result = urllib.parse.parse_qs(
+        response.read().decode(),
+        keep_blank_values=True
+    )
 
-if result.get("RESULT", [""])[0] != "OK":
-    raise SystemExit("QRZ retrieval failed")
-print("QRZ response fields:", list(result.keys()))
+print("API status:", result.get("RESULT"))
+print("Record count:", result.get("COUNT"))
+print("ADIF length:", len(result.get("ADIF", [""])[0]))
+
 adif = result.get("ADIF", [""])[0]
 
 if not adif:
     raise SystemExit("No ADIF data received")
 
-records = re.findall(r"<EOR>", adif, re.IGNORECASE)
-
-print("QRZ retrieval successful")
-print("QSOs retrieved:", len(records))
-print("ADIF size:", len(adif), "characters")
+print("QSOs retrieved:", len(re.findall(r"<EOR>", adif, re.I)))
 print("Latitude fields:", len(re.findall(r"<LAT:", adif, re.I)))
 print("Longitude fields:", len(re.findall(r"<LON:", adif, re.I)))
-print("Grid square fields:", len(re.findall(r"<GRIDSQUARE:", adif, re.I)))
+print("Grid squares:", len(re.findall(r"<GRIDSQUARE:", adif, re.I)))
