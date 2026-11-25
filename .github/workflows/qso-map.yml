@@ -11,40 +11,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Test QRZ Logbook connection
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Retrieve QRZ contacts
         env:
           QRZ_API_KEY: ${{ secrets.QRZ_API_KEY }}
-        run: |
-          python3 - <<'PY'
-          import os
-          import urllib.request
-          import urllib.parse
-
-          data = urllib.parse.urlencode({
-              "KEY": os.environ["QRZ_API_KEY"],
-              "ACTION": "FETCH",
-              "OPTION": "MAX:0"
-          }).encode()
-
-          request = urllib.request.Request(
-              "https://logbook.qrz.com/api",
-              data=data,
-              headers={
-                  "User-Agent": "KQ4SBZ-LiveQSOMap/1.0 (KQ4SBZ)"
-              }
-          )
-
-          with urllib.request.urlopen(request, timeout=60) as response:
-              result = urllib.parse.parse_qs(response.read().decode())
-
-          status = result.get("RESULT", ["UNKNOWN"])[0]
-          count = result.get("COUNT", ["0"])[0]
-
-          print("QRZ API status:", status)
-          print("Total QSOs:", count)
-
-          if status != "OK":
-              raise SystemExit("QRZ connection test failed")
-
-          print("QRZ connection successful!")
-          PY
+        run: python3 generate_map.py
