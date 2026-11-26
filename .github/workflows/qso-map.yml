@@ -45,7 +45,6 @@ jobs:
         run: python3 generate_map.py
 
       - name: Generate map preview image
-        continue-on-error: true
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -59,8 +58,18 @@ jobs:
                   device_scale_factor=1
               )
 
+              url = "https://don-kq4sbz.github.io/qso-map/"
+
+              page.route(
+                  url,
+                  lambda route: route.fulfill(
+                      path="public/index.html",
+                      content_type="text/html"
+                  )
+              )
+
               page.goto(
-                  Path("public/index.html").resolve().as_uri(),
+                  url,
                   wait_until="load",
                   timeout=120000
               )
