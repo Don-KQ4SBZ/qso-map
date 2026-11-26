@@ -2,6 +2,7 @@ import os
 import re
 import math
 import html
+import json
 import urllib.request
 import urllib.parse
 from pathlib import Path
@@ -30,11 +31,14 @@ with urllib.request.urlopen(request, timeout=60) as response:
 
 decoded = html.unescape(urllib.parse.unquote(raw))
 
-records = [
-    record
-    for record in re.split(r"<EOR>", decoded, flags=re.I)
-    if re.search(r"<CALL:\d+", record, re.I)
-]
+def parse_records(text):
+    return [
+        record
+        for record in re.split(r"<EOR>", text, flags=re.I)
+        if re.search(r"<CALL:\d+", record, re.I)
+    ]
+
+records = parse_records(decoded)
 
 if not records:
     raise SystemExit("No QSO records extracted")
@@ -134,20 +138,75 @@ CAMDEN = (36.3463161687504, -76.16453613386902)
 HERTFORD = (36.172102, -76.281502)
 MOVE_DATE = "20251219"
 
+# Load POTA activation log
+pota_file = Path("KQ4SBZ@US-8299-07142026.adi")
+
+if not pota_file.is_file():
+    raise SystemExit("POTA activation file not found")
+
+pota_records = parse_records(
+    pota_file.read_text(encoding="utf-8-sig")
+)
+
+if not pota_records:
+    raise SystemExit("No POTA contacts extracted")
+
+POTA = location(
+    pota_records[0],
+    "MY_LAT",
+    "MY_LON",
+    "MY_GRIDSQUARE"
+)
+
+if POTA is None:
+    raise SystemExit("POTA station coordinates not found")
+
+# Identify duplicate contacts across both logs
+def qso_key(record):
+    return (
+        field(record, "CALL").upper(),
+        field(record, "QSO_DATE"),
+        field(record, "TIME_ON")[:4],
+        field(record, "BAND").upper()
+    )
+
+pota_keys = {
+    qso_key(record)
+    for record in pota_records
+}
+
+# Prefer the POTA record when it exists in both logs
+duplicates = sum(
+    1 for record in records
+    if qso_key(record) in pota_keys
+)
+
+records = [
+    record for record in records
+    if qso_key(record) not in pota_keys
+]
+
+records.extend(pota_records)
+
+# Amateur bands: highest to lowest frequency
 colors = {
-    "160M": "#795548",
-    "80M": "#9c27b0",
-    "60M": "#607d8b",
-    "40M": "#0066ff",
-    "30M": "#00bcd4",
-    "20M": "#008000",
-    "17M": "#76b900",
-    "15M": "#ff8800",
-    "12M": "#e91e63",
-    "10M": "#e60000",
-    "6M": "#673ab7",
+    "70CM": "#34495e",
+    "1.25M": "#ff4500",
     "2M": "#008b8b",
-    "70CM": "#34495e"
+    "4M": "#daa520",
+    "5M": "#4682b4",
+    "6M": "#673ab7",
+    "8M": "#c71585",
+    "10M": "#e60000",
+    "12M": "#e91e63",
+    "15M": "#ff8800",
+    "17M": "#76b900",
+    "20M": "#008000",
+    "30M": "#00bcd4",
+    "40M": "#0066ff",
+    "60M": "#607d8b",
+    "80M": "#9c27b0",
+    "160M": "#795548"
 }
 
 carto_url = os.environ["CARTO_TILE_URL"].strip()
@@ -178,7 +237,7 @@ folium.TileLayer(
     show=False
 ).add_to(m)
 
-# Increase basemap contrast and color saturation
+# Preserve existing basemap appearance
 m.get_root().header.add_child(folium.Element("""
 <style>
 .leaflet-tile-pane {
@@ -194,17 +253,42 @@ MeasureControl(
     secondary_length_unit="kilometers"
 ).add_to(m)
 
+# Create active band layers in frequency order
+active_bands = {
+    field(record, "BAND").upper() or "UNKNOWN"
+    for record in records
+}
+
+ordered_bands = [
+    band for band in colors
+    if band in active_bands
+]
+
+ordered_bands.extend(
+    sorted(active_bands - set(colors))
+)
+
 layers = {}
+
+for band in ordered_bands:
+    layers[band] = folium.FeatureGroup(
+        name=band,
+        show=True
+    )
+    layers[band].add_to(m)
+
 callsigns = set()
 countries = set()
-bounds = [CAMDEN, HERTFORD]
+bounds = [CAMDEN, HERTFORD, POTA]
 
 mapped = 0
 camden_count = 0
 hertford_count = 0
+pota_count = 0
 missing_dates = 0
 longest_distance = 0
 longest_call = ""
+mapped_bands = set()
 
 for record in records:
 
@@ -212,6 +296,9 @@ for record in records:
     band = field(record, "BAND").upper() or "UNKNOWN"
     country = field(record, "COUNTRY")
     qso_date = field(record, "QSO_DATE")
+
+    if country == "United States of America":
+        country = "United States"
 
     destination = location(
         record, "LAT", "LON", "GRIDSQUARE"
@@ -224,17 +311,24 @@ for record in records:
         missing_dates += 1
         continue
 
-    if qso_date < MOVE_DATE:
+    if qso_key(record) in pota_keys:
+        origin = POTA
+        station = "POTA US-8299, NY"
+        pota_count += 1
+
+    elif qso_date < MOVE_DATE:
         origin = CAMDEN
         station = "Camden, NC"
         camden_count += 1
+
     else:
         origin = HERTFORD
         station = "Hertford, NC"
         hertford_count += 1
 
     bounds.append(destination)
-    callsigns.add(call)
+    callsigns.add(call.upper())
+    mapped_bands.add(band)
 
     if country:
         countries.add(country)
@@ -246,13 +340,6 @@ for record in records:
         longest_call = call
 
     color = colors.get(band, "#888888")
-
-    if band not in layers:
-        layers[band] = folium.FeatureGroup(
-            name=band,
-            show=True
-        )
-        layers[band].add_to(m)
 
     popup = "<b>" + html.escape(call) + "</b><br>"
 
@@ -301,6 +388,12 @@ for record in records:
 if mapped == 0:
     raise SystemExit("No mappable contacts found")
 
+# Remove empty band layers
+for band in list(layers):
+    if band not in mapped_bands:
+        m._children.pop(layers[band].get_name(), None)
+        del layers[band]
+
 folium.Marker(
     CAMDEN,
     tooltip="KQ4SBZ - Former Station, Camden, NC",
@@ -327,6 +420,25 @@ folium.Marker(
     icon=folium.Icon(color="red", icon="home")
 ).add_to(m)
 
+folium.Marker(
+    POTA,
+    tooltip="KQ4SBZ - POTA US-8299",
+    popup=folium.Popup(
+        f"<b>KQ4SBZ - POTA US-8299</b><br>"
+        f"Parks on the Air activation<br>"
+        f"New York, USA<br>"
+        f"July 14, 2026<br>"
+        f"Grid: FN13XB<br>"
+        f"QSOs: {pota_count}",
+        max_width=300
+    ),
+    icon=folium.Icon(
+        color="green",
+        icon="tree",
+        prefix="fa"
+    )
+).add_to(m)
+
 # Automatically frame all contacts
 m.fit_bounds(
     [
@@ -344,6 +456,55 @@ m.fit_bounds(
 )
 
 folium.LayerControl(collapsed=False).add_to(m)
+
+# Match band checkbox colors to lines and pins
+band_colors = {
+    band: colors.get(band, "#888888")
+    for band in layers
+}
+
+checkbox_script = """
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const bandColors = BAND_COLORS;
+
+    function colorBandCheckboxes() {
+        document.querySelectorAll(
+            ".leaflet-control-layers-overlays label"
+        ).forEach(function (label) {
+            const band = label.textContent.trim().toUpperCase();
+
+            const checkbox = label.querySelector(
+                'input[type="checkbox"]'
+            );
+
+            if (checkbox && bandColors[band]) {
+                checkbox.style.accentColor = bandColors[band];
+            }
+        });
+    }
+
+    colorBandCheckboxes();
+
+    const observer = new MutationObserver(
+        colorBandCheckboxes
+    );
+
+    document.querySelectorAll(
+        ".leaflet-control-layers-overlays"
+    ).forEach(function (container) {
+        observer.observe(container, {
+            childList: true,
+            subtree: true
+        });
+    });
+});
+</script>
+""".replace("BAND_COLORS", json.dumps(band_colors))
+
+m.get_root().html.add_child(
+    folium.Element(checkbox_script)
+)
 
 updated = datetime.now(timezone.utc).strftime(
     "%Y-%m-%d %H:%M UTC"
@@ -378,23 +539,28 @@ stats = f"""
     <hr>
     Camden QSOs: <b>{camden_count}</b><br>
     Hertford QSOs: <b>{hertford_count}</b><br>
-    Transmitting Stations: <b>2</b><br>
+    POTA QSOs: <b>{pota_count}</b><br>
+    Transmitting Stations: <b>3</b><br>
     <hr>
     Last Updated:<br>{updated}
 </div>
 """
 
-m.get_root().html.add_child(folium.Element(stats))
+m.get_root().html.add_child(
+    folium.Element(stats)
+)
 
 Path("public").mkdir(exist_ok=True)
 m.save("public/index.html")
 
-print("Total QSOs retrieved:", len(records))
+print("Total QSOs:", len(records))
 print("QSOs mapped:", mapped)
 print("Unique callsigns:", len(callsigns))
 print("Countries:", len(countries))
 print("Camden QSOs:", camden_count)
 print("Hertford QSOs:", hertford_count)
+print("POTA QSOs:", pota_count)
+print("Cross-log duplicates removed:", duplicates)
 print("Contacts skipped for missing dates:", missing_dates)
-print("Transmitting stations: 2")
+print("Transmitting stations: 3")
 print("Interactive map generated successfully!")
